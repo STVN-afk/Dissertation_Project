@@ -1,0 +1,239 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Shared pytest configuration, fixtures, and custom markers.
+
+Markers
+-------
+- ``@pytest.mark.unit`` — fast, isolated unit tests (no I/O, no GPU).
+- ``@pytest.mark.integration`` — tests that touch the filesystem, network, or
+  multiple components working together.
+- ``@pytest.mark.e2e`` — end-to-end tests that exercise a full pipeline from
+  source through sink.
+- ``@pytest.mark.device`` — parametrised across compute devices. Tests decorated
+  with this marker are automatically collected once per available device.
+- ``@pytest.mark.requires("group")`` — declares the dependency group needed
+  to run a test file.  Tests are **skipped at collection time** when the
+  required packages are not importable.  Use as a module-level
+  ``pytestmark``::
+
+      pytestmark = pytest.mark.requires("mesh")
+
+  CI can select tests for a specific environment with::
+
+      pytest -m 'requires("mesh")'    # only mesh tests
+      pytest -m 'not requires'         # core-only (no optional deps)
+
+Device fixture
+--------------
+The ``device`` fixture yields ``"cpu"`` and, when CUDA is available,
+``"cuda"``.  Use it together with ``@pytest.mark.device``::
+
+    @pytest.mark.device
+    def test_something(device: str):
+        tensor = torch.zeros(3, device=device)
+        ...
+"""
+
+from __future__ import annotations
+
+import importlib
+import os
+import tempfile
+from typing import TYPE_CHECKING
+
+import pytest
+
+if TYPE_CHECKING:
+    import pathlib
+    from collections.abc import Generator
+
+
+# ---------------------------------------------------------------------------
+# Redirect pipeline cache to a temporary directory
+# ---------------------------------------------------------------------------
+# Pipeline runs create SQLite ``.db`` files under the default cache
+# directory (``~/.cache/psnc/``).  Letting test runs write there pollutes
+# the user's home directory with throw-away databases.  This session-scoped
+# autouse fixture points ``PSNC_CACHE_DIR`` at a temporary directory that
+# is cleaned up when the test session finishes.
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _isolate_cache_dir() -> Generator[None]:
+    """Redirect PSNC_CACHE_DIR to a temp dir for the test session."""
+    with tempfile.TemporaryDirectory(prefix="psnc_test_cache_") as tmp:
+        old = os.environ.get("PSNC_CACHE_DIR")
+        os.environ["PSNC_CACHE_DIR"] = tmp
+        yield
+        if old is None:
+            os.environ.pop("PSNC_CACHE_DIR", None)
+        else:
+            os.environ["PSNC_CACHE_DIR"] = old
+
+
+# ---------------------------------------------------------------------------
+# Dependency-group → sentinel imports
+# ---------------------------------------------------------------------------
+# Maps each dependency-group name to a list of top-level packages that MUST
+# be importable for tests in that group to run.  When any import fails the
+# whole file is skipped with a clear message.
+_GROUP_SENTINELS: dict[str, list[str]] = {
+    "mesh": ["pyvista", "torch", "pyarrow", "physicsnemo.mesh"],
+    "da": ["xarray", "earth2studio"],
+    "atm": ["nvalchemi.data", "ase", "torch"],
+    "cli": ["click", "questionary"],
+    "loky": ["joblib"],
+    "dask": ["dask"],
+}
+
+# Maps test subdirectory names to the dependency group they require.
+# Used by ``pytest_ignore_collect`` to prevent importing test modules
+# when their optional dependencies are missing (top-level imports like
+# ``import numpy`` would cause collection errors otherwise).
+_DIR_TO_GROUP: dict[str, str] = {
+    "mesh": "mesh",
+    "da": "da",
+    "atm": "atm",
+}
+
+
+def _group_available(group: str) -> tuple[bool, str]:
+    """Check whether all sentinel packages for *group* can be imported.
+
+    Parameters
+    ----------
+    group : str
+        Dependency group name (must be a key in ``_GROUP_SENTINELS``).
+
+    Returns
+    -------
+    tuple[bool, str]
+        ``(True, "")`` when available, or ``(False, reason)`` when not.
+    """
+    sentinels = _GROUP_SENTINELS.get(group)
+    if sentinels is None:
+        return True, ""
+    for mod in sentinels:
+        try:
+            importlib.import_module(mod)
+        except ImportError:
+            return False, f"dependency group {group!r} requires {mod!r}"
+    return True, ""
+
+
+# ---------------------------------------------------------------------------
+# Collection hooks
+# ---------------------------------------------------------------------------
+def pytest_ignore_collect(collection_path: pathlib.Path, config: pytest.Config) -> bool | None:
+    """Prevent importing test modules whose optional dependencies are missing.
+
+    Test files in domain subdirectories (e.g. ``test/mesh/``) import
+    packages like numpy and pyvista at module level.  If those packages
+    are not installed, the import fails during collection *before* the
+    ``requires`` marker can skip them.  This hook prevents collection of
+    entire subdirectories when their sentinel packages are unavailable.
+
+    Parameters
+    ----------
+    collection_path : pathlib.Path
+        Path being considered for collection.
+    config : pytest.Config
+        The pytest config object.
+
+    Returns
+    -------
+    bool or None
+        ``True`` to ignore the path, ``None`` to let pytest decide.
+    """
+    # Only check directories that map to a dependency group.
+    for dir_name, group in _DIR_TO_GROUP.items():
+        # Match both the directory itself and files inside it.
+        parts = collection_path.parts
+        if dir_name in parts:
+            ok, _reason = _group_available(group)
+            if not ok:
+                return True
+    return None
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Post-collection hook: auto-tag unit tests and skip unavailable groups.
+
+    1. Tests decorated with ``@pytest.mark.requires("group")`` are skipped
+       when the sentinel imports for that group fail.  This happens at
+       **collection time** so the test module's optional imports never
+       execute in the wrong environment.
+    2. Tests without an explicit category marker (``unit``, ``integration``,
+       ``e2e``, ``benchmark``) are tagged ``unit`` by default.
+    """
+    category_markers = {"unit", "integration", "e2e", "benchmark"}
+
+    # Cache availability checks per group so we import at most once.
+    _cache: dict[str, tuple[bool, str]] = {}
+
+    for item in items:
+        item_markers = {m.name for m in item.iter_markers()}
+
+        # --- requires: add group name as marker + skip when deps missing ---
+        for marker in item.iter_markers(name="requires"):
+            group: str = marker.args[0]
+            # Add the group name itself as a marker so that
+            # ``pytest -m mesh`` selects exactly mesh tests.
+            item.add_marker(getattr(pytest.mark, group))
+
+            if group not in _cache:
+                _cache[group] = _group_available(group)
+            ok, reason = _cache[group]
+            if not ok:
+                item.add_marker(pytest.mark.skip(reason=reason))
+
+        # --- auto-tag unit ---
+        if not item_markers & category_markers:
+            item.add_marker(pytest.mark.unit)
+
+
+# ---------------------------------------------------------------------------
+# Device fixture & helpers
+# ---------------------------------------------------------------------------
+def _available_devices() -> list[str]:
+    """Return the list of devices to test on."""
+    devices = ["cpu"]
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            devices.append("cuda")
+    except ImportError:  # pragma: no cover
+        pass
+    return devices
+
+
+@pytest.fixture(params=_available_devices(), scope="session")
+def device(request: pytest.FixtureRequest) -> str:
+    """Yield each available compute device (``"cpu"``, ``"cuda"``, ...).
+
+    Parameters
+    ----------
+    request : pytest.FixtureRequest
+        Injected by pytest.
+
+    Returns
+    -------
+    str
+        Device string usable by ``torch.device()``.
+    """
+    return request.param

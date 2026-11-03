@@ -1,0 +1,55 @@
+<!---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-License-Identifier: Apache-2.0
+-->
+
+# User Guide
+
+Welcome to the PhysicsNeMo Curator user guide.  This guide covers installation,
+core concepts, and the tools needed to build and run data-curation pipelines.
+If you want to skip straight to running code, have a look at the
+[Examples](https://github.com/NVIDIA/physicsnemo-curator/tree/main/examples) instead and come back here when you have
+questions.
+
+## Getting Started
+
+```{toctree}
+:maxdepth: 1
+
+installation
+quickstart
+```
+
+## Core Concepts
+
+```{toctree}
+:maxdepth: 1
+
+architecture
+```
+
+## Execution & Tooling
+
+```{toctree}
+:maxdepth: 1
+
+parallel
+checkpointing
+dashboard
+```
+
+## Extending / Customization
+
+```{toctree}
+:maxdepth: 2
+
+../extending/index
+```
+
+## Developer Guide
+
+```{toctree}
+:maxdepth: 2
+
+../developer-guide/index
+```

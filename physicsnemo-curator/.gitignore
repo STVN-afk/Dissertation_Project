@@ -1,0 +1,57 @@
+# Slurm jobs:
+*.err
+*.out
+
+*pycache*
+*outputs*
+*egg-info*
+*venv*
+.coverage*
+.pytest_cache*
+.ruff_cache*
+.ty_cache*
+.vscode/
+
+# Rust build artifacts
+target/
+*.so
+*.dylib
+*.dll
+*.pdb
+
+# Coverage reports
+htmlcov/
+
+# Benchmarks
+.benchmarks/
+.asv/
+
+# Pipeline metrics databases
+.pnc/
+
+# Sphinx docs build
+docs/_build/
+
+# Sphinx-Gallery auto-generated output
+docs/auto_examples/
+docs/sg_execution_times.rst
+docs/superpowers/
+docs/specs/
+
+# Opencode
+.opencode/
+
+# Superpowers brainstorm artifacts
+.superpowers/
+
+data/
+output/
+outputs/
+source/
+target/
+examples/input/
+examples/output/
+
+# Environment files with secrets
+.env
+*.env

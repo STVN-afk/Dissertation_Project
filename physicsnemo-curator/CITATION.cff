@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "NVIDIA PhysicsNeMo: An open-source framework for physics-based deep learning in science and engineering"
+date-released: "2023-02-24"
+authors:
+  - name: "PhysicsNeMo Contributors"
+repository-code: "https://github.com/NVIDIA/physicsnemo"
+license: Apache-2.0

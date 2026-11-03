@@ -1,0 +1,13 @@
+[project]
+name = "dissertation"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "emmiai-noether",
+    "nvidia-physicsnemo",
+    "physicsnemo-curator",
+]
+
+[tool.uv.sources]
+emmiai-noether = { path = "noether", editable = true }
+physicsnemo-curator = { path = "physicsnemo-curator", editable = true }

@@ -1,0 +1,47 @@
+<!---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-License-Identifier: Apache-2.0
+-->
+
+# API Reference
+
+## Core
+
+Base abstractions, component registry, checkpointing, and profiling
+utilities.
+
+```{toctree}
+:maxdepth: 2
+
+/autoapi/physicsnemo_curator/core/index
+```
+
+## Dashboard
+
+Interactive web dashboard for pipeline metrics inspection.
+
+```{toctree}
+:maxdepth: 2
+
+/autoapi/physicsnemo_curator/dashboard/index
+```
+
+## Run
+
+Execution backends for parallel and distributed pipeline processing.
+
+```{toctree}
+:maxdepth: 2
+
+/autoapi/physicsnemo_curator/run/index
+```
+
+## Domains
+
+Domain-specific sources, filters, and sinks.
+
+```{toctree}
+:maxdepth: 3
+
+/autoapi/physicsnemo_curator/domains/index
+```

@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Mesh submodule for PhysicsNeMo Curator.
+
+Provides pipeline components for reading, transforming, and writing
+:class:`physicsnemo.mesh.Mesh` objects.  Requires the ``curator[mesh]``
+extra (physicsnemo, pyvista, pyarrow, torch).
+
+This module registers its components with the global
+:data:`~curator.core.registry.registry` at import time.
+"""
+
+from __future__ import annotations
+
+from physicsnemo_curator.core.registry import registry
+from physicsnemo_curator.domains.mesh.filters.field_select import FieldSelectFilter
+from physicsnemo_curator.domains.mesh.filters.mean import MeanFilter
+from physicsnemo_curator.domains.mesh.filters.mesh_info import MeshInfoFilter
+from physicsnemo_curator.domains.mesh.filters.precision import PrecisionFilter
+from physicsnemo_curator.domains.mesh.filters.quality import MeshQualityFilter
+from physicsnemo_curator.domains.mesh.filters.random_permutation import RandomPermutationFilter
+from physicsnemo_curator.domains.mesh.filters.stats import MeshStatsFilter, merge_welford_stats
+from physicsnemo_curator.domains.mesh.filters.wall_node import WallNodeFilter
+from physicsnemo_curator.domains.mesh.sinks.mesh_vtk import MeshVTKSink
+from physicsnemo_curator.domains.mesh.sinks.mesh_writer import MeshSink
+from physicsnemo_curator.domains.mesh.sources.ahmedml import AhmedMLSource
+from physicsnemo_curator.domains.mesh.sources.ansys_rst import AnsysRSTSource
+from physicsnemo_curator.domains.mesh.sources.d3plot import D3PlotSource
+from physicsnemo_curator.domains.mesh.sources.drivaerml import DrivAerMLSource
+from physicsnemo_curator.domains.mesh.sources.nastran import NastranSource
+from physicsnemo_curator.domains.mesh.sources.ns_cylinder import NavierStokesCylinderSource
+from physicsnemo_curator.domains.mesh.sources.vtk import VTKSource
+
+# Register submodule and components with the global registry.
+registry.register_submodule("mesh", "Mesh data curation (physicsnemo.mesh.Mesh)", "physicsnemo.mesh")
+registry.register_source("mesh", AnsysRSTSource)
+registry.register_source("mesh", D3PlotSource)
+registry.register_source("mesh", VTKSource)
+registry.register_source("mesh", DrivAerMLSource)
+registry.register_source("mesh", AhmedMLSource)
+registry.register_source("mesh", NavierStokesCylinderSource)
+registry.register_source("mesh", NastranSource)
+registry.register_filter("mesh", FieldSelectFilter)
+registry.register_filter("mesh", MeanFilter)
+registry.register_filter("mesh", MeshInfoFilter)
+registry.register_filter("mesh", MeshQualityFilter)
+registry.register_filter("mesh", MeshStatsFilter)
+registry.register_filter("mesh", PrecisionFilter)
+registry.register_filter("mesh", RandomPermutationFilter)
+registry.register_filter("mesh", WallNodeFilter)
+registry.register_sink("mesh", MeshSink)
+registry.register_sink("mesh", MeshVTKSink)
+
+__all__ = [
+    "AhmedMLSource",
+    "AnsysRSTSource",
+    "D3PlotSource",
+    "DrivAerMLSource",
+    "FieldSelectFilter",
+    "MeanFilter",
+    "MeshInfoFilter",
+    "MeshQualityFilter",
+    "MeshSink",
+    "MeshStatsFilter",
+    "MeshVTKSink",
+    "NastranSource",
+    "NavierStokesCylinderSource",
+    "PrecisionFilter",
+    "RandomPermutationFilter",
+    "VTKSource",
+    "WallNodeFilter",
+    "merge_welford_stats",
+]

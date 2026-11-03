@@ -1,0 +1,7 @@
+.venv/
+.cache/
+__pycache__/
+temp_raw_drivAerml/
+temp_raw_shift_suv/
+*.vtp
+*.stl

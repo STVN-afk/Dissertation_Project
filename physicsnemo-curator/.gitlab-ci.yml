@@ -1,0 +1,37 @@
+image:
+  name: nvcr.io/nvidia/physicsnemo/physicsnemo:25.03
+  entrypoint: [""]
+
+stages:
+  - build
+  - test
+
+lint:
+  stage: build
+
+  before_script:
+    - pip install uv --no-build-isolation
+    - uv sync --group dev
+    - uv run pre-commit install
+
+  script:
+    - uv run pre-commit run --all-files
+
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+unit_tests:
+  stage: test
+
+  before_script:
+    - pip install uv --no-build-isolation
+    - uv sync --group dev
+    - uv run maturin develop
+
+  script:
+    - uv run pytest test/ --cov --cov-report=term-missing
+
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
