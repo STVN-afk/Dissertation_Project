@@ -12,13 +12,11 @@ import os
 #  
 import shutil 
 import numpy as np
+import torch
 from pathlib import Path
 
 # Get Dataset from Hugging Face (Shift-SUV Sample)
 REPO_ID = "luminary-shift/SUV-sample"
-
-#PRESSURE = 
-
 # Files we want to preprocess into ZARRs / PT Tensors
 FILES_TO_DOWNLOAD = [
     # Merged_surfaces.stl - STL file with Vehicles Geometry 
@@ -30,6 +28,22 @@ FILES_TO_DOWNLOAD = [
     # Could use to calculate Lift
     "LIFT_COEFFICIENT.csv"
 ]
+
+# Pascal-Seconds
+DYNAMIC_VISCOCITY = 1.81e-5 
+# Temperature in Kelvin (K)
+STATIC_TEMP = 293.15
+# Fluid Density in kg/m^3
+DENSITY = 1.225
+# Yaw in Degrees
+YAW = 0.0
+# Angle Of Attack in Degrees
+ANGLE_OF_ATTACK = 0.0
+# Inflow Velocity (Known as Freestream Velocity) in m/s 
+IF_VELO = 50
+
+# Freestream pressure used for creating coefficients to make data independent from flow speed, fluid density and scale. 
+FREESTREAM_DYNAMIC_PRESSURE = 1/2 * DENSITY * (IF_VELO ** 2)
 
 '''
 vtp files for Shift-SUV are:
@@ -57,39 +71,31 @@ files = HfApi().list_repo_files(REPO_ID, repo_type="dataset")
 runs = sorted({f.split("/")[0] for f in files if f.startswith("RUN_")},
             key=lambda r: int(r.split("_")[1]))
 
-runs = runs[:1]
+runs = runs[:10]
 
 import pyvista as pv, numpy as np
 from scipy.spatial import cKDTree
 
-mesh = pv.read(r"C:\Users\Svn15\Dissertation_Project\temp_raw_shift_suv\RUN_1\merged_surfaces.vtp")
-reader = VTKReader(
-                    path=fr"{Path.cwd()}/temp_raw_shift_suv",
+#mesh = pv.read(r"C:\Users\Svn15\Dissertation_Project\temp_raw_shift_suv\RUN_1\merged_surfaces.vtp")
+#reader = VTKReader(
+#                   path=fr"{Path.cwd()}/temp_raw_shift_suv",
                     #keys_to_read=['pressure_average', 'wall_shear_stress_average', 'Normals']
-                    )
+#                   )
 #print(reader.field_names)
 
-data, metadata = reader[0]
+#data, metadata = reader[0]
 
-stl_xyz = data["stl_coordinates"].numpy()
+#stl_xyz = data["stl_coordinates"].numpy()
 
 # Read in File for vtp file
 
-data = pv.read(filename=r"C:\Users\Svn15\Dissertation_Project\temp_raw_shift_suv\RUN_1\merged_surfaces.vtp")
-print(f"Shape of Normal is: {data["Normals"].shape}")
-print(f"Shape of Averaged Pressure is: {data["pressure_average"].shape}")
-print(f"Shape of Averaged Wall_Shear_Stress_average is: {data["wall_shear_stress_average"].shape}")
-print(f"Shape of Surface Positions is: {(data.cell_centers().points).shape}")
-
-#print(data.n_points, data.n_cells)
-#print(data.is_all_triangles)
-#print(list(data.cell_data.keys()))  
-
-
-#print(data.array_names)
+#data = pv.read(filename=r"C:\Users\Svn15\Dissertation_Project\temp_raw_shift_suv\RUN_1\merged_surfaces.vtp")
+#print(f"Shape of Normal is: {data["Normals"].shape}")
+#print(f"Shape of Averaged Pressure is: {data["pressure_average"].shape}")
+#print(f"Shape of Averaged Wall_Shear_Stress_average is: {data["wall_shear_stress_average"].shape}")
+#print(f"Shape of Surface Positions is: {(data.cell_centers().points).shape}")
 
 # Read in File for stl file 
-
 #reader = VTKReader(
 #                    path=f"{Path.cwd()}/temp_raw_shift_suv",
 #                    #keys_to_read=['pressure_average', 'wall_shear_stress_average', 'Normals']
@@ -105,29 +111,77 @@ print(f"Shape of Surface Positions is: {(data.cell_centers().points).shape}")
 
 
 
+output_tensor_path = Path("Data/processed_shiftsuv")
+
+if output_tensor_path.exists():
+     print("Path for processed SHIFT-SUV data is already created, starting preprocessing")
+else:
+     output_tensor_path.parent.mkdir(parents=True, exist_ok=True)
 
 
-#for run in runs:
- #   for filename in FILES_TO_DOWNLOAD:
-  #      print(f"Starting download: {run}/{filename}")
-       # try:
-            # Downloads to cache and returns the local file path
-        #    local_path = hf_hub_download(
-         #       repo_id=REPO_ID,
-          #      repo_type="dataset",
-           #     filename=fr"{run}/{filename}",
-            #    local_dir=fr"{Path.cwd()}/temp_raw_shift_suv"  # Optional: force download to a specific folder
-            #)
-            #print(f"Successfully saved to: {local_path}\n")
+for run in runs:
+     for filename in FILES_TO_DOWNLOAD:
+          print(f"Starting download: {run}/{filename}")
+          try:
+               # Downloads to cache and returns the local file path
+               local_path = hf_hub_download(
+                    repo_id=REPO_ID,
+                    repo_type="dataset",
+                    filename=fr"{run}/{filename}",
+                    local_dir=fr"{Path.cwd()}/temp_raw_shift_suv"  # Optional: force download to a specific folder
+               )
+               print(f"Successfully saved to: {local_path}\n")
 
-       # except HfHubHTTPError as e:
-       #     print(f"Failed to download {filename}: {e}\n")
-            # You can add retry logic here if needed
-        
-       # print(f"Starting Preprocessing to Tensor: {run}/{filename}")
-        #Preprocessing Step 
+          except HfHubHTTPError as e:
+               print(f"Failed to download {filename}: {e}\n")
+               # You can add retry logic here if needed
 
-        # Check if csv file or stl/vtp
+          #Preprocessing Step 
+          # Check if csv file or stl/vtp
+          if '.vtp' in filename:
+               print(f"Starting Preprocessing vtp file to Tensor: {run}/{filename}")
+               data = pv.read(filename=fr"{Path.cwd()}/temp_raw_shift_suv/{run}/{filename}")
+
+               # p_inf is the freestream pressure computed from total pressure and dynamic pressure 
+               # Accurate baseline for sea-level static pressure
+               p_inf = data["pressure_average"].max() - FREESTREAM_DYNAMIC_PRESSURE
+
+               # Pressure coefficient to make aerodynamic data independent from flow speed, fluid density and scale.
+               PRESSURE_COEFFICIENT = (data["pressure_average"] - p_inf) / FREESTREAM_DYNAMIC_PRESSURE
+
+               # Wall Shear coefficient making data independent from flow speed, fluid density and scale.
+               WALL_SHEAR_STRESS_COEFFICIENT = data["wall_shear_stress_average"] / FREESTREAM_DYNAMIC_PRESSURE
+
+               # Non-dimensionizing Vehicle Mesh through normalization because size of SHIFT-SUV is 1/4 scale compared to DrivAerML.
+               position_data = data.cell_centers().points
+               x_min, y_min, z_min = position_data.min(axis=0)
+               x_max, y_max, z_max = position_data.max(axis=0)
+
+               # Vehicle Length for normalization 
+               VEHICLE_LEN = x_max - x_min
+
+               x_origin = x_min
+               y_origin = (y_min + y_max) / 2.0
+               z_origin = z_min
+
+               # Normalize data to make it scale-invariant, 
+               pos_normalized = np.zeros_like(position_data)
+               pos_normalized[:, 0] = (position_data[:, 0] - x_min) / VEHICLE_LEN     # X* in [0.0, 1.0]
+               pos_normalized[:, 1] = (position_data[:, 1] - y_origin) / VEHICLE_LEN  # Y* centered at 0.0
+               pos_normalized[:, 2] = (position_data[:, 2] - z_min) / VEHICLE_LEN     # Z* ground plane at 0.0
+
+               # Saving to tensors at specific location
+               output_case_path = Path(f"{output_tensor_path}/{run}")
+               output_case_path.mkdir(parents=True, exist_ok=True)
+
+               pressure_tensor = torch.tensor(PRESSURE_COEFFICIENT, dtype=torch.float32)
+               torch.save(pressure_tensor,f"{output_case_path}/pressure_tensors.pt")
+               wallshear_tensor = torch.tensor(WALL_SHEAR_STRESS_COEFFICIENT, dtype=torch.float32)
+               torch.save(wallshear_tensor,f"{output_case_path}/wallshear_tensors.pt")
+               surface_pos_tensor = torch.tensor(pos_normalized, dtype=torch.float32)
+               torch.save(surface_pos_tensor,f"{output_case_path}/surface_pos_tensors.pt")
+
+
         # Read in Raw Data to a reader 
     
        # reader = VTKReader(
@@ -139,6 +193,8 @@ print(f"Shape of Surface Positions is: {(data.cell_centers().points).shape}")
         # Convert to Tensors 
         #print(reader._get_field_names())
 
-        # Delete File After Processed
-        # os.remove(f"{local_path}")
+          # Delete File After Processed
+          os.remove(f"{local_path}")
+
+     shutil.rmtree(f"temp_raw_shift_suv/{run}")
 
