@@ -14,6 +14,7 @@ import shutil
 import numpy as np
 import torch
 from pathlib import Path
+import pandas as pd 
 
 # Get Dataset from Hugging Face (Shift-SUV Sample)
 REPO_ID = "luminary-shift/SUV-sample"
@@ -73,26 +74,8 @@ files = HfApi().list_repo_files(REPO_ID, repo_type="dataset")
 runs = sorted({f.split("/")[0] for f in files if f.startswith("RUN_")},
             key=lambda r: int(r.split("_")[1]))
 
+# Adjust Number of Runs used 
 runs = runs[:1]
-
-import pyvista as pv, numpy as np
-from scipy.spatial import cKDTree
-
-# Read in File for stl file 
-#reader = VTKReader(
-#                    path=f"{Path.cwd()}/temp_raw_shift_suv",
-#                    #keys_to_read=['pressure_average', 'wall_shear_stress_average', 'Normals']
-#                    )
-#print(reader.field_names)
-
-#data, metadata = reader[0]
-#print(f"Shape of stl_coordinates is: {data["stl_coordinates"].shape}")
-#print(f"Shape of stl_faces is: {data["stl_faces"].shape}")
-#print(f"Shape of stl_normals is: {data["surface_normals"].shape}")
-#print(f"Shape of stl_centers is: {data["stl_centers"].shape}")
-#print(f"Shape of stl_areas is: {data["stl_areas"].shape}")
-
-
 
 output_tensor_path = Path("Data/processed_shiftsuv")
 
@@ -175,12 +158,7 @@ for run in runs:
                keys_to_read=SURFACE_STL_KEYS
                )
 
-               print(reader.field_names)
                data, metadata = reader[0]
-
-               print(f"Shape of stl_normals is: {data["surface_normals"].shape}")
-               print(f"Shape of stl_areas is: {data["stl_areas"].shape}")
-               print(f"Shape of stl_centers is: {data["stl_centers"].shape}")
 
                # Non-dimensionizing Geometry vehicle Mesh through normalization because size of SHIFT-SUV is 1/4 scale compared to DrivAerML.
                geom_position_data = data["stl_centers"]
@@ -217,9 +195,23 @@ for run in runs:
                geom_area_tensor = torch.tensor(geom_areas_normalized, dtype=torch.float32)
                torch.save(geom_area_tensor,f"{output_case_path}/geom_area_tensors.pt")
 
+          # Read in Raw CSV Data to a reader to extract to tensors
+          elif '.csv' in filename:
+               df = pd.read_csv(f"{Path.cwd()}/temp_raw_shift_suv/{run}/{filename}")
+
+               if 'LIFT' in filename:
+                    key = 'whole_vehicle_cl'
+               else:
+                    key = 'whole_vehicle_cd'
+
+               # Gets Values from Key 
+               coefficient_value = float(df[key].iloc[-1])
+               
+               pass
+
           # Delete File After Processed
           os.remove(f"{local_path}")
 
      # Deletes File 
-     #shutil.rmtree(f"temp_raw_shift_suv/{run}")
+     shutil.rmtree(f"temp_raw_shift_suv/{run}")
 
